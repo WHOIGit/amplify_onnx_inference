@@ -1,0 +1,6 @@
+onnx
+onnxruntime-gpu[cuda,cudnn]
+git+https://github.com/joefutrelle/pyifcb.git
+numpy
+tqdm
+humanize
