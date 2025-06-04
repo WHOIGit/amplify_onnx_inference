@@ -14,15 +14,10 @@ if __name__ == '__main__':
     PROJECT_ROOT = pathlib.Path(__file__).parent.parent.absolute()
     if sys.path[0] != str(PROJECT_ROOT): sys.path.insert(0, str(PROJECT_ROOT))
 
-try:
-    import torch
-    from torch.utils.data import DataLoader
-    from torchvision.transforms import v2
-    from src.datasets_torch import IfcbBinsDataset
-    TORCH_MODE = True
-except ImportError:
-    from datasets import IfcbBinImageTransformer, MyDataLoader, IfcbBinDataset
-    TORCH_MODE = False
+import torch
+from torch.utils.data import DataLoader
+from torchvision.transforms import v2
+from src.datasets_torch import IfcbBinsDataset
 
 # if torch not being imported/installed, do:
 # pip install onnxruntime-gpu[cuda,cudnn]
@@ -31,7 +26,7 @@ ort.preload_dlls(directory="")
 
 def argparse_init(parser=None):
     if parser is None:
-        parser = argparse.ArgumentParser(description='Perform onnx-model inference on ifcb bins, without torch')
+        parser = argparse.ArgumentParser(description='Perform onnx-model inference on ifcb bins, with torch dataloaders')
 
     ## Run Vars ##
     parser.add_argument('MODEL', help='Path to a previously-trained model file')
@@ -116,12 +111,6 @@ def write_output(args, bin_id, pids, score_matrix):
 
 
 def main(args):
-    global TORCH_MODE
-
-    if args.force_notorch:
-        from datasets import IfcbBinImageTransformer, MyDataLoader, IfcbBinDataset
-        TORCH_MODE = False
-    print('TORCH_MODE:', TORCH_MODE)
 
     # load model
     providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
@@ -133,10 +122,7 @@ def main(args):
     img_size = input0.shape[-1]
     input_type = input0.type  # str, eg "tensor(float16)"
 
-    if TORCH_MODE:
-        input_type = getattr(torch, input_type[7:-1])
-    else:
-        input_type = getattr(np, input_type[7:-1]) if input_type!="tensor(float)" else np.float32
+    input_type = getattr(torch, input_type[7:-1])
 
     dynamic_batching = True
     if isinstance(model_batch, str):  # dynamic
@@ -148,38 +134,30 @@ def main(args):
         inference_batchsize = model_batch
 
     # initialize dataset
-    if TORCH_MODE:
-        transforms = [v2.Resize((img_size,img_size)), v2.ToImage(), v2.ToDtype(input_type, scale=True)]
-        #if img_norm:
-        #    norm = v2.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        #    transforms.insert(2, norm)
-        transformer = v2.Compose(transforms)
-    else:
-        transformer = IfcbBinImageTransformer(img_size, dtype=input_type)
+    transforms = [v2.Resize((img_size,img_size)), v2.ToImage(), v2.ToDtype(input_type, scale=True)]
+    #if img_norm:
+    #    norm = v2.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    #    transforms.insert(2, norm)
+    transformer = v2.Compose(transforms)
+
 
     pbar = tqdm(args.BINS, desc=f'batchsize={inference_batchsize}', unit='bins')
     for bin_accessor in pbar:
         img_pids = []
         score_matrix = None
 
-        if TORCH_MODE:
-            root_dir = os.path.dirname(bin_accessor)
-            bin_id = os.path.basename(bin_accessor)
-            dataset = IfcbBinsDataset(bin_dirs=[root_dir], bin_whitelist=[bin_id],
-                transform=transformer, with_sources=True, shuffle=False, use_len=False)
-            dataloader = DataLoader(dataset, batch_size=inference_batchsize,
-                                    num_workers=0, drop_last=False)
-            bin_pid = list(dataset.iter_binfilesets())[0].pid.pid
-        else:
-            dataset = IfcbBinDataset(bin_accessor)
-            dataloader = MyDataLoader(dataset, inference_batchsize, transformer)
-            bin_pid = dataset.pid
+        root_dir = os.path.dirname(bin_accessor)
+        bin_id = os.path.basename(bin_accessor)
+        dataset = IfcbBinsDataset(bin_dirs=[root_dir], bin_whitelist=[bin_id],
+            transform=transformer, with_sources=True, shuffle=False, use_len=False)
+        dataloader = DataLoader(dataset, batch_size=inference_batchsize,
+                                num_workers=0, drop_last=False)
+        bin_pid = list(dataset.iter_binfilesets())[0].pid.pid
 
         # do inference
         for batch_tuple in dataloader:
             batch,batch_pids = batch_tuple[0], batch_tuple[1]
-            if TORCH_MODE:
-                batch = batch.numpy()
+            batch = batch.numpy()
             size_of_batch = batch.shape[0]
 
             if dynamic_batching or size_of_batch == inference_batchsize:
