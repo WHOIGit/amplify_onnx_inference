@@ -8,7 +8,7 @@ from PIL import Image
 import ifcb
 
 
-class DataLoader:
+class MyDataLoader:
     def __init__(self, dataset, batch_size:int=1, transform:callable=None, shuffle:bool=False):
         self.dataset = dataset
         self.batch_size = batch_size

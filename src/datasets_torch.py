@@ -133,3 +133,38 @@ class IfcbBinsDataset(IterableDataset):
         elif self.use_len:
             return self.use_len
 
+
+def make_dataset(source, resize, img_norm=None, dtype=torch.float32):
+    # create dataset
+    whitelist = None
+    blacklist = None
+    # Formatting Dataset
+    if os.path.isdir(source):
+        root_dir = source
+    elif os.path.isfile(source) and source.endswith('.txt'):  # TODO TEST: textfile bin run
+        with open(source,'r') as f:
+            bins = f.read().splitlines()
+        root_dir = os.path.commonpath(bins)
+        whitelist = bins
+    else: # single bin # TODO TEST: single bin run
+        root_dir = os.path.dirname(source)
+        bin_id = os.path.basename(source)
+        whitelist = [bin_id]
+
+    transforms = [v2.Resize((resize,resize)), v2.ToImage(), v2.ToDtype(dtype, scale=True)]
+    if img_norm:
+        norm = v2.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        transforms.insert(2,norm)
+        raise NotImplemented
+    transform = v2.Compose(transforms)
+
+    dataset = IfcbBinsDataset(
+                bin_dirs=[root_dir],
+                bin_whitelist=whitelist,
+                bin_blacklist=blacklist,
+                transform=transform,
+                with_sources=True,
+                shuffle=False,
+                use_len=True)
+
+    return dataset

@@ -14,7 +14,14 @@ if __name__ == '__main__':
     PROJECT_ROOT = pathlib.Path(__file__).parent.parent.absolute()
     if sys.path[0] != str(PROJECT_ROOT): sys.path.insert(0, str(PROJECT_ROOT))
 
-from datasets import IfcbBinImageTransformer, DataLoader, IfcbBinDataset
+try:
+    from torch.utils.data import DataLoader
+    from torchvision.transforms import v2
+    from src.datasets_torch import IfcbBinsDataset, make_dataset
+    TORCH_MODE = True
+except ImportError:
+    from datasets import IfcbBinImageTransformer, MyDataLoader, IfcbBinDataset
+    TORCH_MODE = False
 
 # if torch not being imported/installed, do:
 # pip install onnxruntime-gpu[cuda,cudnn]
@@ -23,23 +30,16 @@ ort.preload_dlls(directory="")
 
 def argparse_init(parser=None):
     if parser is None:
-        parser = argparse.ArgumentParser(
-            description='Train, Run, and perform other tasks related to ifcb and general image classification!')
+        parser = argparse.ArgumentParser(description='Perform onnx-model inference on ifcb bins, without torch')
 
     ## Run Vars ##
     parser.add_argument('MODEL', help='Path to a previously-trained model file')
-    parser.add_argument('BINS', nargs='+', help='Resource(s) to be classified. Accepts a bin, an image, a text-file, or a directory. Directories are accessed recursively')
+    parser.add_argument('BINS', nargs='+', help='Bin(s) to be classified. Can be a directory, bin-path, or list-file thereof')
     parser.add_argument('--batch', '-b', type=int, help='Specify inference batchsize (for dynamically-batched MODEL only)')
-    #parser.add_argument('--type', dest='src_type', default='bin', choices=['bin','img'], help='File type to perform classification on. Defaults is "bin"')
-    parser.add_argument('--classes', help='Path to row-delimited classlist file')
+    parser.add_argument('--classes', help="Path to row-delimited classlist file. Required for output-csv's headers")
     parser.add_argument('--outdir', default='./output/{RUN_DATE}', help='Default is "./output/{RUN_DATE}')
     parser.add_argument('--outfile', default='{BIN_ID}.csv', help='Default is "{BIN_ID}.csv"')
-    #    help='''Name/pattern of the output classification file.
-    #            If TYPE==bin, files are created on a per-bin basis. OUTFILE must include "{BIN_ID}", which will be replaced with the a bin's id.
-    #            A few patters are recognized: {BIN_ID}, {BIN_YEAR}, {BIN_DATE}, {INPUT_SUBDIRS}.
-    #            A few output file formats are recognized: .json, .mat, and .h5 (hdf).
-    #            Default for TYPE==bin is "D{BIN_YEAR}/D{BIN_DATE}/{BIN_ID}_class.h5"; Default for TYPE==img is "img_results.json".
-    #         ''')
+    parser.add_argument('--force-notorch', action='store_true', help='Forces inference without torch dataloaders')
 
     return parser
 
@@ -51,14 +51,6 @@ def argparse_runtime_args(args):
 
     # Record GPUs
     args.gpus = [int(gpu) for gpu in os.environ.get('CUDA_VISIBLE_DEVICES', '').split(',')]
-
-    # Format Output Directory
-    #args.outdir = args.outdir.format(RUN_DATE=run_date_str)
-
-    # set OUTFILE defaults
-    #if not args.outfile:
-    #    if args.src_type == 'bin': args.outfile=['D{BIN_YEAR}/D{BIN_DATE}/{BIN_ID}_class.h5']
-    #    if args.src_type == 'img': args.outfile = ['img_results.json']
 
     # read in classes from file, one class per line
     if args.classes and os.path.isfile(args.classes):
@@ -77,20 +69,6 @@ def argparse_runtime_args(args):
         else:
             bins.append(bin_thing)
     args.BINS = bins
-
-'''
-    if not args.clobber:
-        output_files = [os.path.join(args.outdir, ofile) for ofile in args.outfile]
-        outfile_dict = dict(BIN_ID=bin_obj.pid,
-                            BIN_YEAR=bin_obj.year,
-                            BIN_DATE=bin_obj.yearday,
-                            INPUT_SUBDIRS=bin_obj.namespace)
-        output_files = [ofile.format(**outfile_dict).replace(2*os.sep,os.sep) for ofile in output_files]
-        if all([ os.path.isfile(ofile) for ofile in output_files ]):
-            print('{} result-file(s) already exist - skipping this bin'.format(bin_obj))
-            continue
-
-'''
 
 def softmax(x, axis=None):
     x_max = np.amax(x, axis=axis, keepdims=True)
@@ -157,14 +135,35 @@ def main(args):
         dynamic_batching = False
         inference_batchsize = model_batch
 
+    if args.force_notorch:
+        from datasets import IfcbBinImageTransformer, MyDataLoader, IfcbBinDataset
+        TORCH_MODE = False
+
     # initialize dataset
-    transformer = IfcbBinImageTransformer(img_size, dtype=input_type)
+    if TORCH_MODE:
+        transforms = [v2.Resize((img_size,img_size)), v2.ToImage(), v2.ToDtype(input_type, scale=True)]
+        #if img_norm:
+        #    norm = v2.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        #    transforms.insert(2, norm)
+        transformer = v2.Compose(transforms)
+    else:
+        transformer = IfcbBinImageTransformer(img_size, dtype=input_type)
+
     pbar = tqdm(args.BINS, desc=f'batchsize={inference_batchsize}', unit='bins')
     for bin_accessor in pbar:
         img_pids = []
         score_matrix = None
-        dataset = IfcbBinDataset(bin_accessor)
-        dataloader = DataLoader(dataset, inference_batchsize, transformer)
+
+        if TORCH_MODE:
+            root_dir = os.path.dirname(bin_accessor)
+            bin_id = os.path.basename(bin_accessor)
+            dataset = IfcbBinsDataset(bin_dirs=[root_dir], bin_whitelist=[bin_id],
+                transform=transformer, with_sources=True, shuffle=False, use_len=True)
+            dataloader = DataLoader(dataset, batch_size=inference_batchsize,
+                                    num_workers=0, drop_last=False)
+        else:
+            dataset = IfcbBinDataset(bin_accessor)
+            dataloader = MyDataLoader(dataset, inference_batchsize, transformer)
 
         # do inference
         for batch_tuple in dataloader:
@@ -189,8 +188,6 @@ def main(args):
 
         # write a score matrix csv for each bin
         write_output(args, dataset.pid, img_pids, score_matrix)
-        #output_classes = np.argmax(score_matrix, axis=1)
-        #output_scores = np.max(score_matrix, axis=1)
 
 
 if __name__ == '__main__':
