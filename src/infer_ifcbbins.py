@@ -39,7 +39,7 @@ def argparse_init(parser=None):
     parser.add_argument('BINS', nargs='+', help='Bin(s) to be classified. Can be a directory, bin-path, or list-file thereof')
     parser.add_argument('--batch', '-b', type=int, help='Specify inference batchsize (for dynamically-batched MODEL only)')
     parser.add_argument('--classes', help="Path to row-delimited classlist file. Required for output-csv's headers")
-    parser.add_argument('--outdir', default='./output/{RUN_DATE}', help='Default is "./output/{RUN_DATE}')
+    parser.add_argument('--outdir', default='./outputs/{RUN_DATE}', help='Default is "./outputs/{RUN_DATE}')
     parser.add_argument('--outfile', default='{BIN_ID}.csv', help='Default is "{BIN_ID}.csv"')
     parser.add_argument('--force-notorch', action='store_true', help='Forces inference without torch dataloaders')
 
