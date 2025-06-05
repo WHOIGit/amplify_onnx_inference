@@ -19,7 +19,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy source code
-COPY src/ .
+COPY src /app/src
 
 # Default command (allows overriding with arguments)
-ENTRYPOINT ["python", "infer_ifcbbins.py"]
+ENTRYPOINT ["python", "src/infer_ifcbbins.py"]

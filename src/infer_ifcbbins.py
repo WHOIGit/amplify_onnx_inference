@@ -12,6 +12,7 @@ import ifcb
 if __name__ == '__main__':
     import sys, pathlib
     PROJECT_ROOT = pathlib.Path(__file__).parent.parent.absolute()
+    #print('PROJECT_ROOT:',PROJECT_ROOT)
     if sys.path[0] != str(PROJECT_ROOT): sys.path.insert(0, str(PROJECT_ROOT))
 
 try:
@@ -118,7 +119,7 @@ def write_output(args, bin_id, pids, score_matrix):
 def main(args):
     global TORCH_MODE
 
-    if args.force_notorch:
+    if args.force_notorch or TORCH_MODE is False:
         from datasets import IfcbBinImageTransformer, MyDataLoader, IfcbBinDataset
         TORCH_MODE = False
     print('TORCH_MODE:', TORCH_MODE)
