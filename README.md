@@ -8,8 +8,11 @@ podman run -it --rm -e CUDA_VISIBLE_DEVICES=1 \
        -v $(pwd)/models:/app/models \ 
        -v $(pwd)/inputs/:/app/inputs \
        -v $(pwd)/outputs:/app/outputs \
-       onnx:latest models/PathToYourModel.onnx inputs/PathToBinDirectory
+       onnx:latest models/PathToYourModel.onnx inputs/PathToBinDirectory 
 # optional flags: 
-#     --classes LISTFILE
-#     --force-notorch 
+#     --batch N           # required for models without pre-set input sizes
+#     --classes LISTFILE  # to add class name headers to output score-matrix csv
+#     --outdir DIRPATH    # directory to write files to. Default is './outputs'
+#     --outfile FILENAME  # filename of output csv. Default is "{RUN_DATE}/{BIN_ID}.csv"
+#     --force-notorch     # use non-torch datasets and dataloaders. If torch is not installed, this flag is automaticly set 
 ```
