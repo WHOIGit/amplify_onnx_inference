@@ -1,6 +1,8 @@
-onnx
-onnxruntime-gpu[cuda,cudnn]
+onnx~=1.18.0
+onnxruntime-gpu[cuda,cudnn]~=1.21.1
 git+https://github.com/joefutrelle/pyifcb.git
-numpy
-tqdm
-humanize
+numpy~=2.2.6
+tqdm~=4.67.1
+humanize~=4.12.3
+torch~=2.7.1
+torchvision~=0.22.1
