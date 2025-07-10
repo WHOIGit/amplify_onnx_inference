@@ -54,17 +54,28 @@ def argparse_runtime_args(args):
             args.classes = f.read().strip().splitlines()
 
     bins = []
+    bin_to_input_dir = {}  # Track which input directory each bin came from
     for bin_thing in args.BINS:
         if os.path.isdir(bin_thing):
             dd = ifcb.DataDirectory(bin_thing, blacklist=('bad','skip','beads','temp','data_temp'))
-            bins.extend( [binobj.fileset.basepath for binobj in dd] )
+            bin_paths = [binobj.fileset.basepath for binobj in dd]
+            bins.extend(bin_paths)
+            # Map each bin to its input directory
+            for bin_path in bin_paths:
+                bin_to_input_dir[bin_path] = bin_thing
         elif bin_thing.endswith('.txt') or bin_thing.endswith('.list'):  # TODO TEST: textfile bin run
             with open(bin_thing, 'r') as f:
                 bin_list_from_file = f.read().splitlines()
             bins.extend(bin_list_from_file)
+            # For bins from list files, we can't determine original directory structure
+            for bin_path in bin_list_from_file:
+                bin_to_input_dir[bin_path] = None
         else:
             bins.append(bin_thing)
+            # For individual bin files, we can't determine original directory structure
+            bin_to_input_dir[bin_thing] = None
     args.BINS = bins
+    args.bin_to_input_dir = bin_to_input_dir
 
 def softmax(x, axis=None):
     x_max = np.amax(x, axis=axis, keepdims=True)
@@ -96,8 +107,17 @@ def pad_batch(batch:np.ndarray, target_batch_size:int):
     return padded_batch
 
 
-def write_output(args, bin_id, pids, score_matrix):
+def write_output(args, bin_id, pids, score_matrix, bin_relative_path=None):
     outpath = os.path.join(args.outdir, args.outfile)
+    
+    # Use relative path if provided, otherwise use bin_id
+    if bin_relative_path is not None:
+        # Replace the BIN_ID with the relative path structure
+        outpath = outpath.replace('{BIN_ID}', bin_relative_path)
+    else:
+        outpath = outpath.format(RUN_DATE=args.run_date_str, BIN_ID=bin_id)
+    
+    # Also format other placeholders
     outpath = outpath.format(RUN_DATE=args.run_date_str, BIN_ID=bin_id)
     os.makedirs(os.path.dirname(outpath), exist_ok=True)
 
@@ -176,8 +196,27 @@ def main(args):
                 score_matrix = np.concatenate([score_matrix, batch_score_matrix], axis=0)
             img_pids.extend(batch_pids)
 
+        # Calculate relative path for preserving directory structure
+        bin_relative_path = None
+        input_dir = args.bin_to_input_dir.get(bin_accessor)
+        if input_dir and os.path.isdir(input_dir):
+            try:
+                # Calculate relative path from input directory
+                rel_path = os.path.relpath(bin_accessor, input_dir)
+                # Use just the basename for the CSV filename, but preserve directory structure
+                bin_name = os.path.basename(bin_accessor)
+                if rel_path != bin_name:
+                    # There's a subdirectory structure to preserve
+                    rel_dir = os.path.dirname(rel_path)
+                    bin_relative_path = os.path.join(rel_dir, bin_name)
+                else:
+                    bin_relative_path = bin_name
+            except ValueError:
+                # If relative path calculation fails, use None
+                bin_relative_path = None
+        
         # write a score matrix csv for each bin
-        write_output(args, bin_pid, img_pids, score_matrix)
+        write_output(args, bin_pid, img_pids, score_matrix, bin_relative_path)
 
 
 if __name__ == '__main__':
