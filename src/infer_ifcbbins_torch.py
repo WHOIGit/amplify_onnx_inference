@@ -124,9 +124,12 @@ def write_output(args, bin_id, pids, score_matrix, bin_relative_path=None):
     with open(outpath, 'w') as f:
         if args.classes:
             f.write(','.join(['pid']+args.classes)+'\n')
-        for pid, score_row in zip(pids, score_matrix):
-            str_row = ','.join(map(str,[pid]+score_row.tolist()))
-            f.write(str_row+'\n')
+        if score_matrix is not None:
+            for pid, score_row in zip(pids, score_matrix):
+                str_row = ','.join(map(str,[pid]+score_row.tolist()))
+                f.write(str_row+'\n')
+        else:
+            print(f"Warning: No data processed for bin {bin_id}")
     #print(f'{bin_id} Scores written to {outpath}')
 
 
