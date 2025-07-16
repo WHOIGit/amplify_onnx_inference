@@ -164,7 +164,8 @@ def main(args):
     transformer = v2.Compose(transforms)
 
 
-    pbar = tqdm(args.BINS, desc=f'batchsize={inference_batchsize}', unit='bins')
+    pbar = tqdm(args.BINS, desc=f'batchsize={inference_batchsize}', unit='bins', 
+                dynamic_ncols=False, ncols=80, bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]')
     for bin_accessor in pbar:
         img_pids = []
         score_matrix = None
