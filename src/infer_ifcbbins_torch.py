@@ -1,7 +1,6 @@
 import json
 import os
 import argparse
-import datetime as dt
 
 from tqdm import tqdm
 import numpy as np
@@ -33,7 +32,7 @@ def argparse_init(parser=None):
     parser.add_argument('BINS', nargs='+', help='Bin(s) to be classified. Can be a directory, bin-path, or list-file thereof')
     parser.add_argument('--batch', '-b', type=int, help='Specify inference batchsize (for dynamically-batched MODEL only)')
     parser.add_argument('--classes', help="Path to row-delimited classlist file. Required for output-csv's headers")
-    parser.add_argument('--outdir', default='./outputs/{RUN_DATE}', help='Default is "./outputs/{RUN_DATE}')
+    parser.add_argument('--outdir', default='./outputs/{MODEL_NAME}', help='Default is "./outputs/{MODEL_NAME}')
     parser.add_argument('--outfile', default='{BIN_ID}.csv', help='Default is "{BIN_ID}.csv"')
     parser.add_argument('--force-notorch', action='store_true', help='Forces inference without torch dataloaders')
 
@@ -41,9 +40,8 @@ def argparse_init(parser=None):
 
 
 def argparse_runtime_args(args):
-    # Record Timestamp
-    args.cmd_timestamp = dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds')
-    args.run_date_str, args.run_time_str = args.cmd_timestamp.split('T')
+    # Extract model name from MODEL path
+    args.model_name = os.path.splitext(os.path.basename(args.MODEL))[0]
 
     # Record GPUs
     args.gpus = [int(gpu) for gpu in os.environ.get('CUDA_VISIBLE_DEVICES', '').split(',')]
@@ -115,10 +113,10 @@ def write_output(args, bin_id, pids, score_matrix, bin_relative_path=None):
         # Replace the BIN_ID with the relative path structure
         outpath = outpath.replace('{BIN_ID}', bin_relative_path)
     else:
-        outpath = outpath.format(RUN_DATE=args.run_date_str, BIN_ID=bin_id)
+        outpath = outpath.format(MODEL_NAME=args.model_name, BIN_ID=bin_id)
     
     # Also format other placeholders
-    outpath = outpath.format(RUN_DATE=args.run_date_str, BIN_ID=bin_id)
+    outpath = outpath.format(MODEL_NAME=args.model_name, BIN_ID=bin_id)
     os.makedirs(os.path.dirname(outpath), exist_ok=True)
 
     with open(outpath, 'w') as f:
