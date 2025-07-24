@@ -111,7 +111,8 @@ def pad_batch(batch:np.ndarray, target_batch_size:int):
     return padded_batch
 
 
-def write_output(args, bin_id, pids, score_matrix, bin_relative_path=None):
+def get_output_path(args, bin_id, bin_relative_path=None):
+    """Get the expected output path for a bin without writing to it."""
     outpath = os.path.join(args.outdir, args.outfile)
     
     # Use relative path if provided, otherwise use bin_id
@@ -123,6 +124,11 @@ def write_output(args, bin_id, pids, score_matrix, bin_relative_path=None):
     
     # Also format other placeholders
     outpath = outpath.format(MODEL_NAME=args.model_name, BIN_ID=bin_id)
+    return outpath
+
+
+def write_output(args, bin_id, pids, score_matrix, bin_relative_path=None):
+    outpath = get_output_path(args, bin_id, bin_relative_path)
     os.makedirs(os.path.dirname(outpath), exist_ok=True)
 
     with open(outpath, 'w') as f:
@@ -197,6 +203,31 @@ def main(args):
             dataloader = MyDataLoader(dataset, inference_batchsize, transformer)
             bin_pid = dataset.pid
 
+        # Calculate relative path for preserving directory structure (needed for output path check)
+        bin_relative_path = None
+        input_dir = args.bin_to_input_dir.get(bin_accessor)
+        if input_dir and os.path.isdir(input_dir):
+            try:
+                # Calculate relative path from input directory
+                rel_path = os.path.relpath(bin_accessor, input_dir)
+                # Use just the basename for the CSV filename, but preserve directory structure
+                bin_name = os.path.basename(bin_accessor)
+                if rel_path != bin_name:
+                    # There's a subdirectory structure to preserve
+                    rel_dir = os.path.dirname(rel_path)
+                    bin_relative_path = os.path.join(rel_dir, bin_name)
+                else:
+                    bin_relative_path = bin_name
+            except ValueError:
+                # If relative path calculation fails, use None
+                bin_relative_path = None
+
+        # Check if output already exists
+        expected_output_path = get_output_path(args, bin_pid, bin_relative_path)
+        if os.path.exists(expected_output_path):
+            pbar.set_description(f'batchsize={inference_batchsize} (skipping {bin_pid})')
+            continue
+
         # do inference
         for batch_tuple in dataloader:
             batch,batch_pids = batch_tuple[0], batch_tuple[1]
@@ -220,25 +251,6 @@ def main(args):
                 score_matrix = np.concatenate([score_matrix, batch_score_matrix], axis=0)
             img_pids.extend(batch_pids)
 
-        # Calculate relative path for preserving directory structure
-        bin_relative_path = None
-        input_dir = args.bin_to_input_dir.get(bin_accessor)
-        if input_dir and os.path.isdir(input_dir):
-            try:
-                # Calculate relative path from input directory
-                rel_path = os.path.relpath(bin_accessor, input_dir)
-                # Use just the basename for the CSV filename, but preserve directory structure
-                bin_name = os.path.basename(bin_accessor)
-                if rel_path != bin_name:
-                    # There's a subdirectory structure to preserve
-                    rel_dir = os.path.dirname(rel_path)
-                    bin_relative_path = os.path.join(rel_dir, bin_name)
-                else:
-                    bin_relative_path = bin_name
-            except ValueError:
-                # If relative path calculation fails, use None
-                bin_relative_path = None
-        
         # write a score matrix csv for each bin
         write_output(args, bin_pid, img_pids, score_matrix, bin_relative_path)
 
