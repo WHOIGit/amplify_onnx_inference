@@ -32,14 +32,19 @@ def argparse_init(parser=None):
     parser.add_argument('BINS', nargs='+', help='Bin(s) to be classified. Can be a directory, bin-path, or list-file thereof')
     parser.add_argument('--batch', '-b', type=int, help='Specify inference batchsize (for dynamically-batched MODEL only)')
     parser.add_argument('--classes', help="Path to row-delimited classlist file. Required for output-csv's headers")
-    parser.add_argument('--outdir', default='./outputs/{MODEL_NAME}', help='Default is "./outputs/{MODEL_NAME}')
-    parser.add_argument('--outfile', default='{BIN_ID}.csv', help='Default is "{BIN_ID}.csv"')
+    parser.add_argument('--outdir', default='./outputs', help='Default is "./outputs')
+    parser.add_argument('--outfile', default='{RUN_DATE}/{BIN_ID}.csv', help='Default is "{RUN_DATE}/{BIN_ID}.csv"')
+    parser.add_argument('--subfolder-type', choices=['run-date', 'model-name'], default='run-date', help='Type of subfolder to use: run-date (default) or model-name')
     parser.add_argument('--force-notorch', action='store_true', help='Forces inference without torch dataloaders')
 
     return parser
 
 
 def argparse_runtime_args(args):
+    # Record Timestamp
+    args.cmd_timestamp = dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds')
+    args.run_date_str, args.run_time_str = args.cmd_timestamp.split('T')
+    
     # Extract model name from MODEL path
     args.model_name = os.path.splitext(os.path.basename(args.MODEL))[0]
 
@@ -114,10 +119,10 @@ def get_output_path(args, bin_id, bin_relative_path=None):
         # Replace the BIN_ID with the relative path structure
         outpath = outpath.replace('{BIN_ID}', bin_relative_path)
     else:
-        outpath = outpath.format(MODEL_NAME=args.model_name, BIN_ID=bin_id)
+        outpath = outpath.format(RUN_DATE=args.run_date_str, MODEL_NAME=args.model_name, BIN_ID=bin_id)
     
     # Also format other placeholders
-    outpath = outpath.format(MODEL_NAME=args.model_name, BIN_ID=bin_id)
+    outpath = outpath.format(RUN_DATE=args.run_date_str, MODEL_NAME=args.model_name, BIN_ID=bin_id)
     return outpath
 
 
@@ -238,6 +243,14 @@ if __name__ == '__main__':
     parser = argparse_init()
     args = parser.parse_args()
     argparse_runtime_args(args)
+    
+    # Update outdir and outfile patterns based on subfolder type if using defaults
+    if args.subfolder_type == 'model-name':
+        if args.outdir == './outputs' and args.outfile == '{RUN_DATE}/{BIN_ID}.csv':
+            args.outdir = './outputs/{MODEL_NAME}'
+            args.outfile = '{BIN_ID}.csv'
+    
+    main(args)
     main(args)
 
 
