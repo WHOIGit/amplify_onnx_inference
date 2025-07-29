@@ -1,5 +1,8 @@
 # amplify_onnx_inference
 
+![Tests](https://github.com/WHOIGit/amplify_onnx_inference/workflows/Tests/badge.svg)
+![Lint](https://github.com/WHOIGit/amplify_onnx_inference/workflows/Lint/badge.svg)
+
 ONNX-based inference system for IFCB (Imaging FlowCytobot) data analysis. This tool performs automated plankton classification on IFCB bin files using pre-trained ONNX models.
 
 ## Features
@@ -96,9 +99,17 @@ pip install -r requirements-dev.txt
 pytest
 
 # Run with coverage
-pip install pytest-cov
-pytest --cov=src
+pytest --cov=src --cov-report=term-missing
 
 # Run specific test file
 pytest tests/test_infer_functions.py
 ```
+
+### Continuous Integration
+
+The project includes GitHub Actions workflows that automatically:
+
+- **Run tests** on Python 3.10, 3.11, and 3.12 when code is pushed or PRs are opened
+- **Check code quality** with linting tools (flake8, black, isort)
+
+Tests run automatically on pushes to `main` and `develop` branches, and on all pull requests.

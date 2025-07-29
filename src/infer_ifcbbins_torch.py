@@ -1,22 +1,26 @@
-import json
-import os
 import argparse
 import datetime as dt
+import json
+import os
 
-from tqdm import tqdm
+import ifcb
 import numpy as np
 import onnxruntime as ort
-import ifcb
+from tqdm import tqdm
 
 # set import paths to project root
-if __name__ == '__main__':
-    import sys, pathlib
+if __name__ == "__main__":
+    import pathlib
+    import sys
+
     PROJECT_ROOT = pathlib.Path(__file__).parent.parent.absolute()
-    if sys.path[0] != str(PROJECT_ROOT): sys.path.insert(0, str(PROJECT_ROOT))
+    if sys.path[0] != str(PROJECT_ROOT):
+        sys.path.insert(0, str(PROJECT_ROOT))
 
 import torch
 from torch.utils.data import DataLoader
 from torchvision.transforms import v2
+
 from src.datasets_torch import IfcbBinsDataset
 
 # if torch not being imported/installed, do:
@@ -24,34 +28,62 @@ from src.datasets_torch import IfcbBinsDataset
 ort.preload_dlls(directory="")
 # see https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#preload-dlls
 
+
 def argparse_init(parser=None):
     if parser is None:
-        parser = argparse.ArgumentParser(description='Perform onnx-model inference on ifcb bins, with torch dataloaders')
+        parser = argparse.ArgumentParser(
+            description="Perform onnx-model inference on ifcb bins, with torch dataloaders"
+        )
 
     ## Run Vars ##
-    parser.add_argument('MODEL', help='Path to a previously-trained model file')
-    parser.add_argument('BINS', nargs='+', help='Bin(s) to be classified. Can be a directory, bin-path, or list-file thereof')
-    parser.add_argument('--batch', '-b', type=int, help='Specify inference batchsize (for dynamically-batched MODEL only)')
-    parser.add_argument('--classes', help="Path to row-delimited classlist file. Required for output-csv's headers")
-    parser.add_argument('--outdir', default='./outputs', help='Default is "./outputs')
-    parser.add_argument('--outfile', default='{RUN_DATE}/{SUBPATH}.csv', help='Default is "{RUN_DATE}/{SUBPATH}.csv"')
-    parser.add_argument('--subfolder-type', choices=['run-date', 'model-name'], default='run-date', help='Type of subfolder to use: run-date (default) or model-name')
-    parser.add_argument('--force-notorch', action='store_true', help='Forces inference without torch dataloaders')
+    parser.add_argument("MODEL", help="Path to a previously-trained model file")
+    parser.add_argument(
+        "BINS",
+        nargs="+",
+        help="Bin(s) to be classified. Can be a directory, bin-path, or list-file thereof",
+    )
+    parser.add_argument(
+        "--batch",
+        "-b",
+        type=int,
+        help="Specify inference batchsize (for dynamically-batched MODEL only)",
+    )
+    parser.add_argument(
+        "--classes",
+        help="Path to row-delimited classlist file. Required for output-csv's headers",
+    )
+    parser.add_argument("--outdir", default="./outputs", help='Default is "./outputs')
+    parser.add_argument(
+        "--outfile",
+        default="{RUN_DATE}/{SUBPATH}.csv",
+        help='Default is "{RUN_DATE}/{SUBPATH}.csv"',
+    )
+    parser.add_argument(
+        "--subfolder-type",
+        choices=["run-date", "model-name"],
+        default="run-date",
+        help="Type of subfolder to use: run-date (default) or model-name",
+    )
+    parser.add_argument(
+        "--force-notorch",
+        action="store_true",
+        help="Forces inference without torch dataloaders",
+    )
 
     return parser
 
 
 def argparse_runtime_args(args):
     # Record Timestamp
-    args.cmd_timestamp = dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds')
-    args.run_date_str, args.run_time_str = args.cmd_timestamp.split('T')
-    
+    args.cmd_timestamp = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+    args.run_date_str, args.run_time_str = args.cmd_timestamp.split("T")
+
     # Extract model name from MODEL path
     args.model_name = os.path.splitext(os.path.basename(args.MODEL))[0]
 
     # Record GPUs
-    gpu_str = os.environ.get('CUDA_VISIBLE_DEVICES', '')
-    args.gpus = [int(gpu) for gpu in gpu_str.split(',') if gpu.strip()]
+    gpu_str = os.environ.get("CUDA_VISIBLE_DEVICES", "")
+    args.gpus = [int(gpu) for gpu in gpu_str.split(",") if gpu.strip()]
 
     # read in classes from file, one class per line
     if args.classes and os.path.isfile(args.classes):
@@ -62,14 +94,18 @@ def argparse_runtime_args(args):
     bin_to_input_dir = {}  # Track which input directory each bin came from
     for bin_thing in args.BINS:
         if os.path.isdir(bin_thing):
-            dd = ifcb.DataDirectory(bin_thing, blacklist=('bad','skip','beads','temp','data_temp'))
+            dd = ifcb.DataDirectory(
+                bin_thing, blacklist=("bad", "skip", "beads", "temp", "data_temp")
+            )
             bin_paths = [binobj.fileset.basepath for binobj in dd]
             bins.extend(bin_paths)
             # Map each bin to its input directory
             for bin_path in bin_paths:
                 bin_to_input_dir[bin_path] = bin_thing
-        elif bin_thing.endswith('.txt') or bin_thing.endswith('.list'):  # TODO TEST: textfile bin run
-            with open(bin_thing, 'r') as f:
+        elif bin_thing.endswith(".txt") or bin_thing.endswith(
+            ".list"
+        ):  # TODO TEST: textfile bin run
+            with open(bin_thing, "r") as f:
                 bin_list_from_file = f.read().splitlines()
             bins.extend(bin_list_from_file)
             # For bins from list files, we can't determine original directory structure
@@ -82,13 +118,14 @@ def argparse_runtime_args(args):
     args.BINS = bins
     args.bin_to_input_dir = bin_to_input_dir
 
+
 def softmax(x, axis=None):
     x_max = np.amax(x, axis=axis, keepdims=True)
     exp_x_shifted = np.exp(x - x_max)
     return exp_x_shifted / np.sum(exp_x_shifted, axis=axis, keepdims=True)
 
 
-def pad_batch(batch:np.ndarray, target_batch_size:int):
+def pad_batch(batch: np.ndarray, target_batch_size: int):
     """
     Pads the input batch to target_batch_size by repeating the last element.
 
@@ -103,7 +140,9 @@ def pad_batch(batch:np.ndarray, target_batch_size:int):
     if current_size == target_batch_size:
         return batch
     elif current_size > target_batch_size:
-        raise ValueError(f"Batch size {current_size} exceeds target size {target_batch_size}")
+        raise ValueError(
+            f"Batch size {current_size} exceeds target size {target_batch_size}"
+        )
 
     pad_size = target_batch_size - current_size
     pad_shape = (pad_size,) + batch.shape[1:]
@@ -115,13 +154,15 @@ def pad_batch(batch:np.ndarray, target_batch_size:int):
 def get_output_path(args, bin_id, bin_relative_path=None):
     """Get the expected output path for a bin without writing to it."""
     outpath = os.path.join(args.outdir, args.outfile)
-    
+
     # Use relative path if provided, otherwise use bin_id
     subpath = bin_relative_path if bin_relative_path is not None else bin_id
-    
+
     # Format all placeholders
-    outpath = outpath.format(RUN_DATE=args.run_date_str, MODEL_NAME=args.model_name, SUBPATH=subpath)
-    
+    outpath = outpath.format(
+        RUN_DATE=args.run_date_str, MODEL_NAME=args.model_name, SUBPATH=subpath
+    )
+
     return outpath
 
 
@@ -129,24 +170,26 @@ def write_output(args, bin_id, pids, score_matrix, bin_relative_path=None):
     outpath = get_output_path(args, bin_id, bin_relative_path)
     os.makedirs(os.path.dirname(outpath), exist_ok=True)
 
-    with open(outpath, 'w') as f:
+    with open(outpath, "w") as f:
         if args.classes:
-            f.write(','.join(['pid']+args.classes)+'\n')
+            f.write(",".join(["pid"] + args.classes) + "\n")
         if score_matrix is not None:
             for pid, score_row in zip(pids, score_matrix):
-                str_row = ','.join(map(str,[pid]+score_row.tolist()))
-                f.write(str_row+'\n')
+                str_row = ",".join(map(str, [pid] + score_row.tolist()))
+                f.write(str_row + "\n")
         else:
             print(f"Warning: No data processed for bin {bin_id}")
-    #print(f'{bin_id} Scores written to {outpath}')
+    # print(f'{bin_id} Scores written to {outpath}')
 
 
 def main(args):
 
     # load model
-    providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+    providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
     sess_options = ort.SessionOptions()
-    ort_session = ort.InferenceSession(args.MODEL, sess_options=sess_options, providers=providers)
+    ort_session = ort.InferenceSession(
+        args.MODEL, sess_options=sess_options, providers=providers
+    )
 
     input0 = ort_session.get_inputs()[0]
     model_batch = input0.shape[0]
@@ -157,30 +200,43 @@ def main(args):
 
     dynamic_batching = True
     if isinstance(model_batch, str):  # dynamic
-        assert args.batch is not None, 'Must specify inference batch size for dynamically batched MODEL'
+        assert (
+            args.batch is not None
+        ), "Must specify inference batch size for dynamically batched MODEL"
         inference_batchsize = args.batch
     else:
-        assert args.batch is None or model_batch==args.batch, 'MODEL is statically batched, inference batch size cannot be adjusted'
+        assert (
+            args.batch is None or model_batch == args.batch
+        ), "MODEL is statically batched, inference batch size cannot be adjusted"
         dynamic_batching = False
         inference_batchsize = model_batch
 
     # initialize dataset
-    transforms = [v2.Resize((img_size,img_size)), v2.ToImage(), v2.ToDtype(input_type, scale=True)]
-    #if img_norm:
+    transforms = [
+        v2.Resize((img_size, img_size)),
+        v2.ToImage(),
+        v2.ToDtype(input_type, scale=True),
+    ]
+    # if img_norm:
     #    norm = v2.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     #    transforms.insert(2, norm)
     transformer = v2.Compose(transforms)
 
-
-    pbar = tqdm(args.BINS, desc=f'batchsize={inference_batchsize}', unit='bins', 
-                dynamic_ncols=False, ncols=80, bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]')
+    pbar = tqdm(
+        args.BINS,
+        desc=f"batchsize={inference_batchsize}",
+        unit="bins",
+        dynamic_ncols=False,
+        ncols=80,
+        bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]",
+    )
     for bin_accessor in pbar:
         img_pids = []
         score_matrix = None
 
         root_dir = os.path.dirname(bin_accessor)
         bin_id = os.path.basename(bin_accessor)
-        
+
         # Calculate relative path for preserving directory structure (needed for output path check)
         bin_relative_path = None
         input_dir = args.bin_to_input_dir.get(bin_accessor)
@@ -199,31 +255,40 @@ def main(args):
             except ValueError:
                 # If relative path calculation fails, use None
                 bin_relative_path = None
-        
-        dataset = IfcbBinsDataset(bin_dirs=[root_dir], bin_whitelist=[bin_id],
-            transform=transformer, with_sources=True, shuffle=False, use_len=False)
-        dataloader = DataLoader(dataset, batch_size=inference_batchsize,
-                                num_workers=0, drop_last=False)
+
+        dataset = IfcbBinsDataset(
+            bin_dirs=[root_dir],
+            bin_whitelist=[bin_id],
+            transform=transformer,
+            with_sources=True,
+            shuffle=False,
+            use_len=False,
+        )
+        dataloader = DataLoader(
+            dataset, batch_size=inference_batchsize, num_workers=0, drop_last=False
+        )
         bin_pid = list(dataset.iter_binfilesets())[0].pid.pid
-        
+
         # Check if output already exists
         expected_output_path = get_output_path(args, bin_pid, bin_relative_path)
         if os.path.exists(expected_output_path):
-            pbar.set_description(f'batchsize={inference_batchsize} (skipping {bin_pid})')
+            pbar.set_description(
+                f"batchsize={inference_batchsize} (skipping {bin_pid})"
+            )
             continue
 
         # do inference
         for batch_tuple in dataloader:
-            batch,batch_pids = batch_tuple[0], batch_tuple[1]
+            batch, batch_pids = batch_tuple[0], batch_tuple[1]
             batch = batch.numpy()
             size_of_batch = batch.shape[0]
 
             if dynamic_batching or size_of_batch == inference_batchsize:
-                outputs = ort_session.run(None, {input0.name:batch})
+                outputs = ort_session.run(None, {input0.name: batch})
             else:
-                #print('Last batch difference:', inference_batchsize-size_of_batch)
+                # print('Last batch difference:', inference_batchsize-size_of_batch)
                 batch = pad_batch(batch, inference_batchsize)
-                outputs = ort_session.run(None, {input0.name:batch})
+                outputs = ort_session.run(None, {input0.name: batch})
                 outputs = [output[:size_of_batch] for output in outputs]
 
             batch_score_matrix = outputs[0]
@@ -231,31 +296,25 @@ def main(args):
             if score_matrix is None:
                 score_matrix = batch_score_matrix
             else:
-                score_matrix = np.concatenate([score_matrix, batch_score_matrix], axis=0)
+                score_matrix = np.concatenate(
+                    [score_matrix, batch_score_matrix], axis=0
+                )
             img_pids.extend(batch_pids)
 
         # write a score matrix csv for each bin
         write_output(args, bin_pid, img_pids, score_matrix, bin_relative_path)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse_init()
     args = parser.parse_args()
     argparse_runtime_args(args)
-    
+
     # Update outdir and outfile patterns based on subfolder type if using defaults
-    if args.subfolder_type == 'model-name':
-        if args.outdir == './outputs' and args.outfile == '{RUN_DATE}/{SUBPATH}.csv':
-            args.outdir = './outputs/{MODEL_NAME}'
-            args.outfile = '{SUBPATH}.csv'
-    
+    if args.subfolder_type == "model-name":
+        if args.outdir == "./outputs" and args.outfile == "{RUN_DATE}/{SUBPATH}.csv":
+            args.outdir = "./outputs/{MODEL_NAME}"
+            args.outfile = "{SUBPATH}.csv"
+
     main(args)
     main(args)
-
-
-
-
-
-
-
-
