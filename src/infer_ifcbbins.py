@@ -40,7 +40,7 @@ def argparse_init(parser=None):
     parser.add_argument('--batch', '-b', type=int, help='Specify inference batchsize (for dynamically-batched MODEL only)')
     parser.add_argument('--classes', help="Path to row-delimited classlist file. Required for output-csv's headers")
     parser.add_argument('--outdir', default='./outputs', help='Default is "./outputs')
-    parser.add_argument('--outfile', default='{RUN_DATE}/{BIN_ID}.csv', help='Default is "{RUN_DATE}/{BIN_ID}.csv"')
+    parser.add_argument('--outfile', default='{RUN_DATE}/{SUBPATH}.csv', help='Default is "{RUN_DATE}/{SUBPATH}.csv"')
     parser.add_argument('--subfolder-type', choices=['run-date', 'model-name'], default='run-date', help='Type of subfolder to use: run-date (default) or model-name')
     parser.add_argument('--force-notorch', action='store_true', help='Forces inference without torch dataloaders')
 
@@ -122,14 +122,10 @@ def get_output_path(args, bin_id, bin_relative_path=None):
     outpath = os.path.join(args.outdir, args.outfile)
     
     # Use relative path if provided, otherwise use bin_id
-    if bin_relative_path is not None:
-        # Replace the BIN_ID with the relative path structure
-        outpath = outpath.replace('{BIN_ID}', bin_relative_path)
-        # Format other placeholders
-        outpath = outpath.format(RUN_DATE=args.run_date_str, MODEL_NAME=args.model_name)
-    else:
-        # Format all placeholders
-        outpath = outpath.format(RUN_DATE=args.run_date_str, MODEL_NAME=args.model_name, BIN_ID=bin_id)
+    subpath = bin_relative_path if bin_relative_path is not None else bin_id
+    
+    # Format all placeholders
+    outpath = outpath.format(RUN_DATE=args.run_date_str, MODEL_NAME=args.model_name, SUBPATH=subpath)
     
     return outpath
 
@@ -268,8 +264,8 @@ if __name__ == '__main__':
     argparse_runtime_args(args)
     
     # Update outfile pattern based on subfolder type if using default
-    if args.subfolder_type == 'model-name' and args.outfile == '{RUN_DATE}/{BIN_ID}.csv':
-        args.outfile = '{MODEL_NAME}/{BIN_ID}.csv'
+    if args.subfolder_type == 'model-name' and args.outfile == '{RUN_DATE}/{SUBPATH}.csv':
+        args.outfile = '{MODEL_NAME}/{SUBPATH}.csv'
     
     main(args)
     main(args)
