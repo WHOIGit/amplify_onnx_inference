@@ -125,11 +125,12 @@ def get_output_path(args, bin_id, bin_relative_path=None):
     if bin_relative_path is not None:
         # Replace the BIN_ID with the relative path structure
         outpath = outpath.replace('{BIN_ID}', bin_relative_path)
+        # Format other placeholders
+        outpath = outpath.format(RUN_DATE=args.run_date_str, MODEL_NAME=args.model_name)
     else:
+        # Format all placeholders
         outpath = outpath.format(RUN_DATE=args.run_date_str, MODEL_NAME=args.model_name, BIN_ID=bin_id)
     
-    # Also format other placeholders
-    outpath = outpath.format(RUN_DATE=args.run_date_str, MODEL_NAME=args.model_name, BIN_ID=bin_id)
     return outpath
 
 
