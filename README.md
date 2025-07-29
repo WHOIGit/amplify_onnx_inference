@@ -74,3 +74,31 @@ python src/infer_ifcbbins.py models/classifier.onnx data/bins/
 python src/infer_ifcbbins_torch.py --subfolder-type model-name \
     --classes classes.txt models/classifier.onnx data/bins/
 ```
+
+## Development
+
+### Installing Dependencies
+
+For production use:
+```bash
+pip install -r requirements.txt
+```
+
+For development (includes testing tools):
+```bash
+pip install -r requirements-dev.txt
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+pytest
+
+# Run with coverage
+pip install pytest-cov
+pytest --cov=src
+
+# Run specific test file
+pytest tests/test_infer_functions.py
+```

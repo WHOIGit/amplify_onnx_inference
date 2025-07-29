@@ -56,7 +56,8 @@ def argparse_runtime_args(args):
     args.model_name = os.path.splitext(os.path.basename(args.MODEL))[0]
 
     # Record GPUs
-    args.gpus = [int(gpu) for gpu in os.environ.get('CUDA_VISIBLE_DEVICES', '').split(',')]
+    gpu_str = os.environ.get('CUDA_VISIBLE_DEVICES', '')
+    args.gpus = [int(gpu) for gpu in gpu_str.split(',') if gpu.strip()]
 
     # read in classes from file, one class per line
     if args.classes and os.path.isfile(args.classes):
