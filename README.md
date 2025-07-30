@@ -112,4 +112,4 @@ The project includes GitHub Actions workflows that automatically:
 - **Run tests** on Python 3.10, 3.11, and 3.12 when code is pushed or PRs are opened
 - **Check code quality** with linting tools (flake8, black, isort)
 
-Tests run automatically on pushes to `main` and `develop` branches, and on all pull requests.
+Tests run automatically on pushes to `main` branch and on all pull requests.
