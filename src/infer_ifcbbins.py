@@ -315,7 +315,7 @@ def main(args):
                 outputs = [output[:size_of_batch] for output in outputs]
 
             batch_score_matrix = outputs[0]
-            #batch_score_matrix = softmax(batch_score_matrix, axis=1)
+            # batch_score_matrix = softmax(batch_score_matrix, axis=1)
             if score_matrix is None:
                 score_matrix = batch_score_matrix
             else:
