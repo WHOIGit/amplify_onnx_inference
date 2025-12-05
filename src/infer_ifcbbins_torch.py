@@ -70,6 +70,8 @@ def argparse_init(parser=None):
         help="Forces inference without torch dataloaders",
     )
 
+    parser.add_argument('--ensure-softmax', action='store_true', help='Ensure model output is softmaxed')
+
     return parser
 
 
@@ -120,10 +122,18 @@ def argparse_runtime_args(args):
 
 
 def softmax(x, axis=None):
-    x_max = np.amax(x, axis=axis, keepdims=True)
-    exp_x_shifted = np.exp(x - x_max)
-    return exp_x_shifted / np.sum(exp_x_shifted, axis=axis, keepdims=True)
+    x_max = np.max(x, axis=axis, keepdims=True)
+    exp_x = np.exp(x - x_max)
+    return exp_x / np.sum(exp_x, axis=axis, keepdims=True)
 
+def is_row_softmaxed(x, tol=1e-5):
+    # x is a 1D array
+    # 1) are values all between 0 and 1 inclusive
+    if np.any(x < 0) or np.any(x > 1):
+        return False
+    # 2) do values sum to 1 within tolerance
+    total = np.sum(x)
+    return np.isclose(total, 1.0, atol=tol)
 
 def pad_batch(batch: np.ndarray, target_batch_size: int):
     """
@@ -292,7 +302,12 @@ def main(args):
                 outputs = [output[:size_of_batch] for output in outputs]
 
             batch_score_matrix = outputs[0]
-            # batch_score_matrix = softmax(batch_score_matrix, axis=1)
+
+            if args.ensure_softmax:
+                # check first row of batch_score_matrix
+                if not is_row_softmaxed(batch_score_matrix[0,:]):
+                    batch_score_matrix = softmax(batch_score_matrix, axis=1)
+
             if score_matrix is None:
                 score_matrix = batch_score_matrix
             else:
