@@ -305,7 +305,7 @@ def main(args):
 
             if args.ensure_softmax:
                 # check first row of batch_score_matrix
-                if not is_row_softmaxed(batch_score_matrix[0,:]):
+                if not is_row_softmaxed(batch_score_matrix[0, :]):
                     batch_score_matrix = softmax(batch_score_matrix, axis=1)
 
             if score_matrix is None:
