@@ -126,6 +126,7 @@ def softmax(x, axis=None):
     exp_x = np.exp(x - x_max)
     return exp_x / np.sum(exp_x, axis=axis, keepdims=True)
 
+
 def is_row_softmaxed(x, tol=1e-5):
     # x is a 1D array
     # 1) are values all between 0 and 1 inclusive
@@ -134,6 +135,7 @@ def is_row_softmaxed(x, tol=1e-5):
     # 2) do values sum to 1 within tolerance
     total = np.sum(x)
     return np.isclose(total, 1.0, atol=tol)
+
 
 def pad_batch(batch: np.ndarray, target_batch_size: int):
     """
